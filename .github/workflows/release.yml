@@ -13,10 +13,6 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: keycloak-phone-verification
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -36,14 +32,14 @@ jobs:
         with:
           name: phone-verification-authenticator
           path: |
-            keycloak-phone-verification/target/*.jar
-            !keycloak-phone-verification/target/original-*.jar
+            target/*.jar
+            !target/original-*.jar
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            keycloak-phone-verification/target/*.jar
-            !keycloak-phone-verification/target/original-*.jar
+            target/*.jar
+            !target/original-*.jar
           generate_release_notes: true
