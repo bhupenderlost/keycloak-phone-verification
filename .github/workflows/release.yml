@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: keycloak-phone-verification
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build provider JAR
+        run: mvn -B clean package -DskipTests
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-verification-authenticator
+          path: |
+            keycloak-phone-verification/target/*.jar
+            !keycloak-phone-verification/target/original-*.jar
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            keycloak-phone-verification/target/*.jar
+            !keycloak-phone-verification/target/original-*.jar
+          generate_release_notes: true

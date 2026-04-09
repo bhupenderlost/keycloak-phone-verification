@@ -1,0 +1,2 @@
+dev.bhupender.smsauth.authenticator.PhoneAuthenticatorFactory
+dev.bhupender.smsauth.authenticator.OtpAuthenticatorFactory
