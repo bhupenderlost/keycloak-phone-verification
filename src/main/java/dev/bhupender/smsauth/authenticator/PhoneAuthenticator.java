@@ -3,6 +3,7 @@ package dev.bhupender.smsauth.authenticator;
 import dev.bhupender.smsauth.config.SmsAuthConfig;
 import dev.bhupender.smsauth.service.OtpException;
 import dev.bhupender.smsauth.service.OtpServiceFactory;
+import dev.bhupender.smsauth.support.PhoneVerificationSupport;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
@@ -17,7 +18,6 @@ public class PhoneAuthenticator implements Authenticator {
 
     private static final Logger LOG = Logger.getLogger(PhoneAuthenticator.class);
     private static final String TEMPLATE = "phone-form.ftl";
-    private static final String E164_REGEX = "^\\+[1-9]\\d{6,14}$";
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
@@ -28,8 +28,8 @@ public class PhoneAuthenticator implements Authenticator {
     public void action(AuthenticationFlowContext context) {
         MultivaluedMap<String, String> params = context.getHttpRequest().getDecodedFormParameters();
 
-        String rawPhone = blankToNull(params.getFirst("phone"));
-        String countryCode = blankToNull(params.getFirst("countryCode"));
+        String rawPhone = PhoneVerificationSupport.blankToNull(params.getFirst("phone"));
+        String countryCode = PhoneVerificationSupport.blankToNull(params.getFirst("countryCode"));
 
         if (rawPhone == null) {
             context.failureChallenge(
@@ -38,15 +38,15 @@ public class PhoneAuthenticator implements Authenticator {
             return;
         }
 
-        String phone = normalise(rawPhone, countryCode, defaultCountryCode(context));
-        if (!phone.matches(E164_REGEX)) {
+        String phone = PhoneVerificationSupport.normalisePhone(rawPhone, countryCode, defaultCountryCode(context));
+        if (!phone.matches(PhoneVerificationSupport.E164_REGEX)) {
             context.failureChallenge(
                     AuthenticationFlowError.INVALID_CREDENTIALS,
                     buildPhoneForm(context, SmsAuthConfig.MSG_PHONE_INVALID, rawPhone, countryCode));
             return;
         }
 
-        UserModel user = resolveUser(context, phone);
+        UserModel user = PhoneVerificationSupport.resolveUser(context.getSession(), context.getRealm(), phone);
 
         String verificationSid;
         try {
@@ -82,16 +82,6 @@ public class PhoneAuthenticator implements Authenticator {
         return form.createForm(TEMPLATE);
     }
 
-    private String normalise(String phone, String countryCode, String defaultCode) {
-        String cleaned = phone.replaceAll("[\\s\\-\\(\\)\\.]", "");
-        if (cleaned.startsWith("+"))
-            return cleaned;
-        if (cleaned.startsWith("00"))
-            return "+" + cleaned.substring(2);
-        String prefix = (countryCode != null && countryCode.startsWith("+")) ? countryCode : defaultCode;
-        return prefix + cleaned;
-    }
-
     private String defaultCountryCode(AuthenticationFlowContext context) {
         if (context.getAuthenticatorConfig() == null)
             return SmsAuthConfig.DEFAULT_COUNTRY_CODE;
@@ -99,39 +89,8 @@ public class PhoneAuthenticator implements Authenticator {
                 .getOrDefault(SmsAuthConfig.CONF_DEFAULT_COUNTRY_CODE, SmsAuthConfig.DEFAULT_COUNTRY_CODE);
     }
 
-    private UserModel resolveUser(AuthenticationFlowContext context, String phone) {
-        var session = context.getSession();
-        var realm = context.getRealm();
-
-        UserModel u = session.users().getUserByUsername(realm, phone);
-        if (u != null)
-            return u;
-
-        u = session.users()
-                .searchForUserByUserAttributeStream(realm, SmsAuthConfig.ATTR_PHONE, phone)
-                .findFirst().orElse(null);
-        if (u != null)
-            return u;
-
-        u = session.users()
-                .searchForUserByUserAttributeStream(realm, "phone", phone)
-                .findFirst().orElse(null);
-        if (u != null)
-            return u;
-
-        UserModel created = session.users().addUser(realm, phone);
-        created.setEnabled(true);
-        created.setSingleAttribute(SmsAuthConfig.ATTR_PHONE, phone);
-        LOG.infof("Auto-provisioned user  phone=%s  userId=%s", phone, created.getId());
-        return created;
-    }
-
     private static String ms() {
         return String.valueOf(System.currentTimeMillis());
-    }
-
-    private static String blankToNull(String s) {
-        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     @Override
