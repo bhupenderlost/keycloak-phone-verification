@@ -2,10 +2,12 @@
 
 Phone-number-first authentication for Keycloak using SMS OTP delivered through Twilio Verify.
 
-This project adds two custom browser-flow authenticators:
+This project adds:
 
 - `Collect Phone Number`
 - `Verify SMS Code`
+- `phone_otp` direct grant type
+- `phone-verification/request-otp` realm API endpoint
 
 The result is a login flow where users enter a phone number, receive a one-time code by SMS, and complete sign-in without a username/password form.
 
@@ -36,6 +38,7 @@ The result is a login flow where users enter a phone number, receive a one-time 
 - Automatic zero-friction user auto-provisioning when no account exists
 - Configurable resend cooldown, resend limit, and invalid-attempt limit
 - Previous verification invalidated on resend to reduce stale-code reuse
+- API-based OTP request plus token issuance for mobile or backend clients
 
 ## How It Works
 
@@ -49,6 +52,13 @@ The result is a login flow where users enter a phone number, receive a one-time 
 5. Twilio Verify sends the SMS code.
 6. The user submits the OTP.
 7. Twilio Verify validates the code and the browser flow completes.
+
+For API clients, the flow is:
+
+1. Call the OTP request endpoint with `client_id`, optional `client_secret`, and `phone_number`.
+2. Receive the SMS code.
+3. Call the token endpoint with `grant_type=phone_otp`, `client_id`, optional `client_secret`, `phone_number`, and `otp`.
+4. Keycloak validates the OTP and returns tokens.
 
 ## Compatibility
 
@@ -219,6 +229,80 @@ For `Verify SMS Code`, configure:
 3. Set `Browser Flow` to your copied flow.
 4. Save.
 
+## Direct Access Grant API
+
+The provider now supports an API-driven phone login that mirrors direct access grants.
+
+Requirements:
+
+- the client must use protocol `openid-connect`
+- `Direct Access Grants Enabled` must be turned on for the client
+- confidential clients must send `client_secret`
+
+### 1. Request OTP
+
+Endpoint:
+
+```text
+POST /realms/{realm}/phone-verification/request-otp
+```
+
+Form fields:
+
+- `client_id` required
+- `client_secret` required for confidential clients
+- `phone_number` required
+- `country_code` optional, for local numbers such as `+91`
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8080/realms/myrealm/phone-verification/request-otp" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=my-client" \
+  -d "client_secret=my-secret" \
+  -d "phone_number=9876543210" \
+  -d "country_code=+91"
+```
+
+### 2. Exchange Phone + OTP For Tokens
+
+Endpoint:
+
+```text
+POST /realms/{realm}/protocol/openid-connect/token
+```
+
+Form fields:
+
+- `grant_type=phone_otp`
+- `client_id` required
+- `client_secret` required for confidential clients
+- `phone_number` required
+- `otp` required
+- `country_code` optional
+- `scope` optional
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8080/realms/myrealm/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=phone_otp" \
+  -d "client_id=my-client" \
+  -d "client_secret=my-secret" \
+  -d "phone_number=9876543210" \
+  -d "country_code=+91" \
+  -d "otp=123456" \
+  -d "scope=openid profile email"
+```
+
+Notes:
+
+- the OTP request is tracked per realm, client, and normalized phone number
+- resend cooldown, resend limit, and max invalid-attempt limit use the same defaults as the browser flow
+- user lookup and auto-provisioning are the same as the browser flow
+
 ## User Resolution And Provisioning
 
 When a phone number is submitted, the provider resolves a user in this order:
@@ -298,7 +382,6 @@ This is important because it reduces the chance that an older verification remai
 ## Current Scope And Limitations
 
 - The current provider implementation is Twilio-specific.
-- The project is designed for browser authentication flows.
+- The project supports browser flows and a custom direct grant style API.
 - There are no automated tests in this repository yet.
 - Auto-provisioning is always enabled in the current implementation.
-
