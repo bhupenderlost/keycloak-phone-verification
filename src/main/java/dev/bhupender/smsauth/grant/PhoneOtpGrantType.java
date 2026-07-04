@@ -10,8 +10,6 @@ import dev.bhupender.smsauth.support.PhoneVerificationSupport;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import java.util.Map;
-import java.util.Collections;
-import java.util.Set;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventType;
 import org.keycloak.models.ClientModel;
@@ -102,11 +100,6 @@ public class PhoneOtpGrantType implements OAuth2GrantType {
         } catch (NumberFormatException e) {
             return 0;
         }
-    }
-
-    @Override
-    public Set<String> getTokenParameterNames() {
-        return Collections.emptySet();
     }
 
     @Override
